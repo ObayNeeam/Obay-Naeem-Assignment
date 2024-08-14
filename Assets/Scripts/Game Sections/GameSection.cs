@@ -16,7 +16,8 @@ public class GameSection : GameSectionBase
     public override event Action OnSectionEnded;
     public List<int> cardsData;
     public bool[] cardsState;
-    public Dictionary<int,UICardBtn> openCards;
+    public Dictionary<int,UICardBtn> visualOpenCards;
+    public Dictionary<int,UICardBtn> stateOpenCards;
     private Dictionary<int, float> openCardsTimer;
     private GameStateStructure gameState;
     private int playerMatches;
@@ -67,6 +68,8 @@ public class GameSection : GameSectionBase
                 playerClicks = gameState.userClicks;
                 cardsState = gameState.cellsState;
                 cardsData = gameState.cellsType.ToList();
+                gameplayWidget.SetPlayerClicks(playerClicks);
+                gameplayWidget.SetPlayerScore(playerMatches);
                 GameController.Instance.CardsLayput = gameState.layout;
             }
             else
@@ -79,7 +82,8 @@ public class GameSection : GameSectionBase
             InitNewState(totalCards);
         }
 
-        openCards = new Dictionary<int, UICardBtn>();
+        visualOpenCards = new Dictionary<int, UICardBtn>();
+        stateOpenCards = new Dictionary<int, UICardBtn>();
         openCardsTimer = new Dictionary<int, float>();
     }
     private void InitNewState(int totalCards)
@@ -114,14 +118,12 @@ public class GameSection : GameSectionBase
     {
         effectAudioPlayer.PlayOneShot(ClickAudioClip);
         card.SetBtnInteractable(false);
-        playerClicks++;
-        gameState.userClicks++;
-        gameplayWidget.SetPlayerClicks(playerClicks);
         card.FlipCard(true, 0.25f).OnComplete(() =>
         {
-            openCards.Add(card.CardIndex, card);
+            visualOpenCards.Add(card.CardIndex, card);
+            stateOpenCards.Add(card.CardIndex, card);
             openCardsTimer.Add(card.CardIndex, cardTimer);
-            CheckOpenCards(card);
+            CheckOpenCards();
         });
     }
     private void Update()
@@ -147,56 +149,79 @@ public class GameSection : GameSectionBase
         foreach(int index in cardsToRemove)
         {
             openCardsTimer.Remove(index);
-            UICardBtn card = openCards[index];
-            openCards.Remove(index);
+            if(stateOpenCards.ContainsKey(index)) stateOpenCards.Remove(index);
+            UICardBtn card = visualOpenCards[index];
+            visualOpenCards.Remove(index);
             card.FlipCard(false,0.25f);
             card.SetBtnInteractable(true);
         }
     }
-    private void CheckOpenCards(UICardBtn card)
+    private void CheckOpenCards()
     {
-        if (openCards.Count <= 1) return;
+        //if (stateOpenCards.Count <= 1) return;
 
-        List<int> keys = new List<int>(openCards.Keys);
-        for (int i = 0; i < keys.Count; i++)
+        List<int> keys = new List<int>(stateOpenCards.Keys);
+        for (int i = 0; i < keys.Count; i+=2)
         {
-            int key = keys[i];
-
+            if (i + 1 >= keys.Count)
+            {
+                //stateOpenCards.Remove(keys[i]);
+                break;
+            }
+            playerClicks++;
+            gameState.userClicks++;
+            gameplayWidget.SetPlayerClicks(playerClicks);
+            int key1 = keys[i];
+            int key2 = keys[i + 1];
+            UICardBtn card1 = stateOpenCards[key1];
+            UICardBtn card2 = stateOpenCards[key2];
             //if (openCards[key].CardType == card.CardType && openCards[key].CardIndex != card.CardIndex && !cardsState[key])
-            if (IsOpenValid(openCards[key],card))
+            if (IsOpenValid(card1, card2))
             {
                 effectAudioPlayer.PlayOneShot(matchAudioClip);
-                int index1 = card.CardIndex;
-                int index2 = key;
-                Debug.Log($"A Match Index {index1} and {index2} | Type {card.CardType}");
-                cardsState[index1] = true;
-                cardsState[index2] = true;
+                Debug.Log($"A Match Index {card1.CardIndex} and {card2.CardIndex} | Type {card1.CardType}");
+                HandleMatchingCards(key1, key2);
+                continue;
+            }
+            else
+            {
+                stateOpenCards.Remove(key1);
+                stateOpenCards.Remove(key2);
 
-                gameState.cellsState = cardsState;
-                playerMatches++;
-                gameState.userMatches++;
-                gameplayWidget.SetPlayerScore(playerMatches);
-
-                openCardsTimer.Remove(index1);
-                openCardsTimer.Remove(index2);
-
-                openCards[index1].SetBtnInteractable(false);
-                openCards[index2].SetBtnInteractable(false);
-
-                openCards[index1].ShakeCard(0.7f);
-                openCards[index2].ShakeCard(0.7f);
-
-                openCards.Remove(index1);
-                openCards.Remove(index2);
-
-                CheckGameEnding();
-                break;
             }
         }
     }
     private bool IsOpenValid(UICardBtn card1, UICardBtn card2)
     {
         return card1.CardType == card2.CardType && card1.CardIndex != card2.CardIndex && !cardsState[card1.CardIndex];
+    }
+    private void HandleMatchingCards(int key1, int key2)
+    {
+        cardsState[key1] = true;
+        cardsState[key2] = true;
+
+        gameState.cellsState = cardsState;
+        playerMatches++;
+        gameState.userMatches++;
+
+        gameplayWidget.SetPlayerScore(playerMatches);
+
+        openCardsTimer.Remove(key1);
+        openCardsTimer.Remove(key2);
+
+        stateOpenCards[key1].SetBtnInteractable(false);
+        stateOpenCards[key2].SetBtnInteractable(false);
+
+        stateOpenCards[key1].ShakeCard(0.7f);
+        stateOpenCards[key2].ShakeCard(0.7f);
+
+        stateOpenCards.Remove(key1);
+        stateOpenCards.Remove(key2);
+
+        visualOpenCards.Remove(key1);
+        visualOpenCards.Remove(key2);
+
+        CheckGameEnding();
     }
     private void CheckGameEnding()
     {
